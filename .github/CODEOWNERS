@@ -1,0 +1,8 @@
+# Code owners for this repository.
+# The last matching line wins, so general rules go first.
+
+# Default owner for everything in the repo
+*                     @mubuyuk
+
+# In a team, add more specific rules below, for example:
+# /.github/workflows/   @mubuyuk

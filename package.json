@@ -1,0 +1,19 @@
+{
+  "name": "waypoint",
+  "version": "1.0.0",
+  "description": "A link shortener: the course's starter application, Node.js track.",
+  "private": true,
+  "type": "module",
+  "main": "src/server.js",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "express": "^5.2.1",
+    "mssql": "^12.7.2"
+  }
+}

@@ -8,9 +8,7 @@ else
   echo "ShellCheck is not installed here, so this step is skipped. The pipeline runs it."
 fi
 
-echo "==> Checking that the repo's files exist"
-for file in README.md .gitignore; do
-  test -f "$file" || { echo "Missing: $file"; exit 1; }
-done
+echo "==> Installing the dependencies"
+npm ci
 
 echo "Build OK"

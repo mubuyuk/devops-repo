@@ -13,6 +13,11 @@ jobs:
       - name: Check Out the Code
         uses: actions/checkout@v7
 
+      - name: Set Up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+
       - name: Run the Build Script
         run: ./scripts/build.sh
 

@@ -19,3 +19,6 @@ artifacts/
 
 # Written by the deploy script (module 05) into the zip, never committed.
 src/commit.txt
+
+# dependencies
+/node_modules

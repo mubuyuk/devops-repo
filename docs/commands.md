@@ -98,7 +98,10 @@ az resource list \
 
 ## 4. Bicep – Pipelinens identitet (`identity.bicep`)
 
-Skapar identiteten som GitHub Actions loggar in som, och ger den rätt att ändra i resursgruppen.
+Skapar identiteten som GitHub Actions loggar in som, och ger den rätt att ändra i resursgruppen. Tänk på den som pipelinens **passerkort** till Azure.
+
+> **Görs en gång.** Identiteten finns kvar i Azure, och pipelinen använder den vid varje körning.
+> Gör om stegen nedan bara om identiteten har tagits bort, eller om du byter repo.
 
 **Kräver:** stegen i "Börja här" och `SUBJECT_PREFIX` från avsnitt 2.
 
@@ -134,7 +137,50 @@ az deployment group create \
   --output tsv
 ```
 
-Utskriften är identitetens `clientId` (ett långt id). Vänta en halv minut innan nästa steg.
+Samma kommando på en rad, om inklistringen krånglar:
+
+```bash
+az deployment group create --resource-group "$RESOURCE_GROUP" --template-file infra/identity.bicep --parameters identityName="$IDENTITY_NAME" subjectPrefix="$SUBJECT_PREFIX" --query properties.outputs.clientId.value --output tsv
+```
+
+Utskriften är identitetens `clientId`, kortets nummer (ett långt id som `b31b166f-...`). Vänta en halv minut innan nästa steg.
+
+### Ge GitHub kortnumret
+
+Hämtar de tre värdena pipelinen behöver för att logga in:
+
+```bash
+CLIENT_ID=$(az deployment group show --resource-group "$RESOURCE_GROUP" --name identity --query properties.outputs.clientId.value --output tsv)
+TENANT_ID=$(az account show --query tenantId --output tsv)
+SUBSCRIPTION_ID=$(az account show --query id --output tsv)
+echo "$CLIENT_ID"
+```
+
+`echo` ska skriva ut samma id som `create` gav. Spara sedan värdena som hemligheter i GitHub:
+
+```bash
+gh secret set AZURE_CLIENT_ID --body "$CLIENT_ID"
+gh secret set AZURE_TENANT_ID --body "$TENANT_ID"
+gh secret set AZURE_SUBSCRIPTION_ID --body "$SUBSCRIPTION_ID"
+```
+
+Varje rad ska skriva ut `✓ Set Actions secret ... for mubuyuk/devops-repo`.
+
+### Kontrollera att allt är kopplat
+
+Visar hemligheterna i GitHub och när de senast ändrades (värdena syns aldrig):
+
+```bash
+gh secret list
+```
+
+Visar vilket repo och vilken gren som får använda identiteten:
+
+```bash
+az identity federated-credential list --identity-name "$IDENTITY_NAME" --resource-group "$RESOURCE_GROUP" --query "[].subject" --output tsv
+```
+
+Det ska stå ditt `SUBJECT_PREFIX` följt av `:ref:refs/heads/main`.
 
 ---
 
@@ -217,3 +263,4 @@ az deployment group what-if \
 | `The name property cannot be null or empty` | En variabel är tom, oftast `IDENTITY_NAME`. | Kör `source scripts/variables.sh`. |
 | `MissingSubscription` | Git Bash har ändrat en sökväg. | Kör `export MSYS_NO_PATHCONV=1`. |
 | `subjectPrefix` tom eller fel | `SUBJECT_PREFIX` hämtades inte i det här fönstret. | Kör `SUBJECT_PREFIX=$(gh api ...)` från avsnitt 2. |
+| `AADSTS700016: Application ... was not found` | `AZURE_CLIENT_ID` i GitHub pekar på en identitet som inte finns längre. | Skapa identiteten och kör "Ge GitHub kortnumret" i avsnitt 4. |

@@ -1,0 +1,51 @@
+name: Infra and Deploy Pipeline
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  infra:
+    name: Infrastructure
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+    steps:
+      - name: Check Out the Code
+        uses: actions/checkout@v7
+
+      - name: Log In to Azure
+        uses: azure/login@v3
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Deploy the Infrastructure
+        run: |
+          az deployment group create \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --template-file infra/main.bicep \
+            --parameters infra/dev.bicepparam \
+            --query properties.provisioningState \
+            --output tsv
+
+  deploy:
+    name: Deploy App Service
+    needs: infra
+    uses: ./.github/workflows/deploy-app-service-pipeline.yml
+    secrets: inherit
+    permissions:
+      id-token: write
+      contents: read

@@ -8,7 +8,8 @@ desktop.ini
 # Editors
 .vscode/
 .idea/
-*.swpnode_modules/
+*.swp
+node_modules/
 *.db
 *.db-shm
 *.db-wal
@@ -19,3 +20,6 @@ artifacts/
 
 # Written by the deploy script (module 05) into the zip, never committed.
 src/commit.txt
+
+# Compiled Bicep (az bicep build without --stdout), never committed.
+infra/*.json

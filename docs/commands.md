@@ -229,7 +229,87 @@ az appservice plan show \
 
 ---
 
-## 6. Snabbguide: ett vanligt arbetspass
+## 6. Följ pipelinen
+
+En push till `main` som ändrar kod startar `Infra and Deploy Pipeline`. Den bygger infrastrukturen och deployar sedan koden. Pushar du bara dokumentation (`.md`-filer eller `docs/`) startar den inte.
+
+### Se de senaste körningarna
+
+```bash
+gh run list --limit 5
+```
+
+✓ betyder lyckad, X misslyckad och * pågår.
+
+### Följ den senaste körningen live
+
+Vänta ungefär 10 sekunder efter `git push`, annars ser du förra körningen.
+
+```bash
+LAST_RUN=$(gh run list --limit 1 --json databaseId --jq '.[0].databaseId')
+gh run watch "$LAST_RUN"
+```
+
+En grön körning har tre jobb: **Infrastructure**, **Deploy App Service / Build and Test** och **Deploy App Service / Deploy**.
+
+### Om något blev rött
+
+Visa bara loggen från stegen som misslyckades:
+
+```bash
+gh run view "$LAST_RUN" --log-failed
+```
+
+Kör om bara de misslyckade jobben:
+
+```bash
+gh run rerun "$LAST_RUN" --failed
+```
+
+### Starta pipelinen utan att pusha
+
+```bash
+gh workflow run infra-deploy-pipeline.yml
+```
+
+### Öppna körningen i webbläsaren
+
+```bash
+gh run view "$LAST_RUN" --web
+```
+
+---
+
+## 7. Städa efter dig
+
+Planen kostar pengar varje timme den finns, även när ingen använder appen. Ta bort appen när du är klar för dagen. Planen följer med automatiskt.
+
+> 🛑 **Det här tar du INTE bort:**
+> - **Resursgruppen** `RG-muratbuyuksal`. Skolan har skapat den, och den ska stå kvar hela kursen.
+> - **Identiteten** `id-waypoint-pipeline-murat`. Den kostar ingenting, och utan den kan pipelinen inte logga in.
+> - **Hemligheterna i GitHub.**
+
+### Ta bort appen (och planen)
+
+```bash
+az webapp delete --name "$APP_NAME" --resource-group "$RESOURCE_GROUP"
+```
+
+Ibland skrivs `Note: If this is the last app on the plan, the plan will also be deleted.` ut, ibland ingenting. Båda är okej.
+
+### Kontrollera att det blev rätt
+
+```bash
+az resource list --resource-group "$RESOURCE_GROUP" --output table
+```
+
+Bara en rad ska stå kvar: `id-waypoint-pipeline-murat`.
+
+> **Bygga upp igen?** Pusha kod till `main`, eller kör `gh workflow run infra-deploy-pipeline.yml`. Pipelinen skapar planen och appen från Bicep-filerna.
+
+---
+
+## 8. Snabbguide: ett vanligt arbetspass
 
 Kopiera hela blocket när du ska förhandsgranska allt:
 

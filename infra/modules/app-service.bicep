@@ -3,6 +3,9 @@ param appName string
 param appServicePlanId string
 param linuxFxVersion string
 
+@description('Id of the Log Analytics workspace that gets the logs.')
+param workspaceId string
+
 resource appService 'Microsoft.Web/sites@2025-03-01' = {
   name: appName
   location: location
@@ -18,6 +21,25 @@ resource appService 'Microsoft.Web/sites@2025-03-01' = {
         }
       ]
     }
+  }
+}
+
+// Sends the app's logs to the workspace. Without it, nothing ends up there.
+resource appServiceDiagnostics 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
+  name: 'to-workspace'
+  scope: appService
+  properties: {
+    workspaceId: workspaceId
+    logs: [
+      {
+        category: 'AppServiceHTTPLogs'
+        enabled: true
+      }
+      {
+        category: 'AppServiceConsoleLogs'
+        enabled: true
+      }
+    ]
   }
 }
 

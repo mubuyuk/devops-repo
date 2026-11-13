@@ -16,6 +16,9 @@ param linuxFxVersion string
 @description('Name of the container registry. Letters and digits only, unique in all of Azure.')
 param registryName string
 
+@description('Name of the Log Analytics workspace.')
+param workspaceName string
+
 module appServicePlan 'modules/app-service-plan.bicep' = {
   name: 'app-service-plan'
   params: {
@@ -33,6 +36,14 @@ module containerRegistry 'modules/container-registry.bicep' = {
   }
 }
 
+module logAnalytics 'modules/log-analytics.bicep' = {
+  name: 'log-analytics'
+  params: {
+    location: location
+    workspaceName: workspaceName
+  }
+}
+
 module appService 'modules/app-service.bicep' = {
   name: 'app-service'
   params: {
@@ -40,6 +51,7 @@ module appService 'modules/app-service.bicep' = {
     appName: appName
     appServicePlanId: appServicePlan.outputs.appServicePlanId
     linuxFxVersion: linuxFxVersion
+    workspaceId: logAnalytics.outputs.workspaceId
   }
 }
 

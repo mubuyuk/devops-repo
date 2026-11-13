@@ -13,12 +13,23 @@ param appName string
 @description('Language and version, for example NODE|24-lts.')
 param linuxFxVersion string
 
+@description('Name of the container registry. Letters and digits only, unique in all of Azure.')
+param registryName string
+
 module appServicePlan 'modules/app-service-plan.bicep' = {
   name: 'app-service-plan'
   params: {
     location: location
     planName: planName
     planSku: planSku
+  }
+}
+
+module containerRegistry 'modules/container-registry.bicep' = {
+  name: 'container-registry'
+  params: {
+    location: location
+    registryName: registryName
   }
 }
 
@@ -33,3 +44,4 @@ module appService 'modules/app-service.bicep' = {
 }
 
 output appServiceUrl string = appService.outputs.appServiceUrl
+output registryLoginServer string = containerRegistry.outputs.loginServer

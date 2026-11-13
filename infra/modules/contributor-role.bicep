@@ -1,13 +1,14 @@
-@description('The identity that gets the role. A new identity has a new id, and so gets a new role.')
+@description('The identity that gets the role.')
 param principalId string
 
-// Contributor is a built-in role. Its id is the same in every subscription.
-var contributorRoleId = 'b24988ac-6180-42a0-ab88-20f7382dd24c'
+// Contributor is built in. Its id is the same everywhere.
+var roleId = 'b24988ac-6180-42a0-ab88-20f7382dd24c'
+var roleType = 'Microsoft.Authorization/roleDefinitions'
 
-resource contributorRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(resourceGroup().id, principalId, contributorRoleId)
+resource role 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(resourceGroup().id, principalId, roleId)
   properties: {
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', contributorRoleId)
+    roleDefinitionId: subscriptionResourceId(roleType, roleId)
     principalId: principalId
     principalType: 'ServicePrincipal'
   }

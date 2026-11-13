@@ -1,0 +1,9 @@
+.git
+.github
+docs
+infra
+scripts
+tests
+node_modules
+*.db
+artifacts

@@ -21,15 +21,10 @@ resource githubMainCredential 'Microsoft.ManagedIdentity/userAssignedIdentities/
   }
 }
 
-// Contributor is a built-in role. Its id is the same in every subscription.
-var contributorRoleId = 'b24988ac-6180-42a0-ab88-20f7382dd24c'
-
-resource contributorRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(resourceGroup().id, pipelineIdentity.id, contributorRoleId)
-  properties: {
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', contributorRoleId)
+module contributorRole 'modules/contributor-role.bicep' = {
+  name: 'contributor-role'
+  params: {
     principalId: pipelineIdentity.properties.principalId
-    principalType: 'ServicePrincipal'
   }
 }
 

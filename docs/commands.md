@@ -8,19 +8,23 @@ Kommandona är anpassade för **Git Bash** och körs från projektets rotmapp (`
 
 ## ⭐ Börja här: varje gång du öppnar ett nytt terminalfönster
 
-Ett nytt fönster minns ingenting från förra gången. Kopiera de här två raderna och klistra in dem först:
+Ett nytt fönster minns ingenting från förra gången. Kopiera de här tre raderna och klistra in dem först:
 
 ```bash
 source scripts/variables.sh
 export MSYS_NO_PATHCONV=1
+REGISTRY_NAME=crwaypointmurat
 ```
 
 | Rad | Vad den gör |
 |---|---|
 | `source scripts/variables.sh` | Lägger in dina namn (resursgrupp, plan, app, identitet) i variabler. |
 | `export MSYS_NO_PATHCONV=1` | Hindrar Git Bash på Windows från att ändra sökvägar som börjar med `/`. Annars kan Azure svara med fel som `MissingSubscription`. |
+| `REGISTRY_NAME=crwaypointmurat` | Namnet på ditt container registry (modul 7). Bara bokstäver och siffror, samma som i `infra/dev.bicepparam`. |
 
 Efter `source` ska du se en lista med dina värden. Står det något tomt där, är något fel i `scripts/variables.sh`.
+
+> **Viktigt:** en tom variabel ger ofta missvisande fel. Exempel: är `$RESOURCE_GROUP` tom svarar Azure med `AuthorizationFailed`, och i felets *scope* saknas gruppens namn (`.../resourcegroups/providers/...`). Kör `echo` på variablerna om ett fel ser konstigt ut.
 
 > **Varför `source` och inte bara `./scripts/variables.sh`?**
 > Utan `source` körs skriptet i en tillfällig terminal som stängs direkt, och variablerna försvinner med den. Med `source` hamnar de i *din* terminal.
@@ -55,9 +59,10 @@ echo "$PLAN_NAME"
 echo "$PLAN_SKU"
 echo "$APP_NAME"
 echo "$IDENTITY_NAME"
+echo "$REGISTRY_NAME"
 ```
 
-Är en rad tom? Kör `source scripts/variables.sh` igen.
+Är en rad tom? Kör raderna i "Börja här" igen.
 
 ### Hämta GitHub-prefixet (behövs för identity.bicep)
 
@@ -100,6 +105,8 @@ az resource list \
 
 Skapar identiteten som GitHub Actions loggar in som, och ger den rätt att ändra i resursgruppen. Tänk på den som pipelinens **passerkort** till Azure.
 
+Sedan modul 7 ligger rollen (Contributor) i en egen modul, `infra/modules/contributor-role.bicep`, som `identity.bicep` anropar.
+
 > **Görs en gång.** Identiteten finns kvar i Azure, och pipelinen använder den vid varje körning.
 > Gör om stegen nedan bara om identiteten har tagits bort, eller om du byter repo.
 
@@ -116,13 +123,22 @@ az deployment group what-if \
   --parameters identityName="$IDENTITY_NAME" subjectPrefix="$SUBJECT_PREFIX"
 ```
 
-Sista raden ska vara:
+I modul 6, när identiteten inte fanns, var sista raden `Resource changes: 2 to create, 1 unsupported.` `1 unsupported` är normalt: det är rollen, som inte kan förhandsgranskas förrän identiteten finns. Efter modul 7, när rollen ligger i en modul och identiteten redan finns, kan raden se annorlunda ut.
 
-```
-Resource changes: 2 to create, 1 unsupported.
+### Om du får `RoleAssignmentExists`: ta bort den gamla rollen
+
+Rollens namn räknas fram av Bicep. Ändras sättet det räknas på (som i modul 7) finns den gamla rollen kvar under sitt gamla namn, och Azure vägrar skapa en dubblett. Ta då bort pipelinens gamla roller och kör `create` igen:
+
+```bash
+for ROLE_ID in $(az role assignment list \
+  --resource-group "$RESOURCE_GROUP" \
+  --query "[?principalType=='ServicePrincipal'].id" \
+  --output tsv | tr -d '\r'); do
+  az role assignment delete --ids "$ROLE_ID"
+done
 ```
 
-`1 unsupported` är normalt. Det är rollen, som inte kan förhandsgranskas förrän identiteten finns.
+Ingen utskrift betyder att det gick bra. `tr -d '\r'` behövs på Windows.
 
 ### Skapa på riktigt
 
@@ -184,9 +200,11 @@ Det ska stå ditt `SUBJECT_PREFIX` följt av `:ref:refs/heads/main`.
 
 ---
 
-## 5. Bicep – Plan och webbapp (`main.bicep`)
+## 5. Bicep – Plan, webbapp och registry (`main.bicep`)
 
-Använder parameterfilen `infra/dev.bicepparam`, där namnen redan står.
+Använder parameterfilen `infra/dev.bicepparam`, där namnen redan står. Sedan modul 7 skapar `main.bicep` även ett container registry (`infra/modules/container-registry.bicep`).
+
+> Normalt behöver du inte köra `create` själv: pipelinen kör `main.bicep` vid varje push. Kommandona här är för att förhandsgranska eller felsöka.
 
 ### Kontrollera syntaxen
 
@@ -202,6 +220,14 @@ az deployment group what-if \
   --template-file infra/main.bicep \
   --parameters infra/dev.bicepparam
 ```
+
+När bara identiteten finns (efter städning) ska sista raden vara:
+
+```
+Resource changes: 3 to create, 1 to ignore.
+```
+
+De tre är registryt, planen och appen. `1 to ignore` är identiteten, som inte finns i `main.bicep` och därför lämnas orörd.
 
 ### Skapa på riktigt
 
@@ -229,7 +255,88 @@ az appservice plan show \
 
 ---
 
-## 6. Följ pipelinen
+## 6. Container registry och image (modul 7)
+
+Ett **registry** är ett lager för images, som GitHub för kod. En **image** är appen färdigpackad med Node och alla paket, byggd enligt `Dockerfile`. Taggen är commitens korta id, så att du alltid ser vilken kod en image kommer från.
+
+**Ordning:** registryt måste finnas (pipelinen skapar det vid en push), sedan rollen, sedan bygget.
+
+### Kontrollera att registryt finns
+
+```bash
+az acr show --name "$REGISTRY_NAME" --query loginServer --output tsv
+```
+
+Ska skriva ut `crwaypointmurat.azurecr.io`. `ResourceNotFound` betyder att pipelinen inte har skapat det än, eller blev röd.
+
+### Ge pipelinens identitet rätt att pusha images (AcrPush)
+
+Görs **för hand**, inte i Bicep: pipelinen har bara Contributor, och Contributor får inte dela ut roller. Rollen ges bara på registryt, inte på hela gruppen.
+
+```bash
+PRINCIPAL_ID=$(az identity show \
+  --name "$IDENTITY_NAME" \
+  --resource-group "$RESOURCE_GROUP" \
+  --query principalId \
+  --output tsv)
+REGISTRY_ID=$(az acr show \
+  --name "$REGISTRY_NAME" \
+  --query id \
+  --output tsv)
+
+az role assignment create \
+  --assignee-object-id "$PRINCIPAL_ID" \
+  --assignee-principal-type ServicePrincipal \
+  --role AcrPush \
+  --scope "$REGISTRY_ID" \
+  --output none
+```
+
+Ingen utskrift betyder att det gick bra.
+
+### Visa identitetens roller
+
+```bash
+az role assignment list \
+  --assignee "$PRINCIPAL_ID" \
+  --all \
+  --query "[].{role:roleDefinitionName, scope:scope}" \
+  --output table
+```
+
+Två rader: **Contributor** på resursgruppen och **AcrPush** på registryt (scope slutar på `/registries/crwaypointmurat`).
+
+### Bygg imagen och pusha den till registryt
+
+Bygget sker i Azure, så Docker Desktop behövs inte. Kontrollera först att allt är committat (`git status --short` ska vara tomt), så att taggen stämmer med koden.
+
+```bash
+TAG=$(git rev-parse --short HEAD)
+echo "$TAG"
+
+az acr build \
+  --registry "$REGISTRY_NAME" \
+  --image "waypoint:$TAG" \
+  --build-arg COMMIT=$(git rev-parse HEAD) \
+  .
+```
+
+Glöm inte punkten sist (= bygg från den här mappen). Tar ungefär en minut och slutar med `Successfully pushed image: crwaypointmurat.azurecr.io/waypoint:<tagg>` och `Run ID: ... was successful`.
+
+### Visa images i registryt
+
+```bash
+az acr repository show-tags \
+  --name "$REGISTRY_NAME" \
+  --repository waypoint \
+  --output table
+```
+
+Visar taggarna, till exempel `7dbbf4f`.
+
+---
+
+## 7. Följ pipelinen
 
 En push till `main` som ändrar kod startar `Infra and Deploy Pipeline`. Den bygger infrastrukturen och deployar sedan koden. Pushar du bara dokumentation (`.md`-filer eller `docs/`) startar den inte.
 
@@ -252,6 +359,27 @@ gh run watch "$LAST_RUN"
 
 En grön körning har tre jobb: **Infrastructure**, **Deploy App Service / Build and Test** och **Deploy App Service / Deploy**.
 
+### Följ körningen för just din senaste commit
+
+Säkrare än ovan, eftersom du aldrig råkar titta på en gammal körning:
+
+```bash
+gh run watch "$(gh run list \
+  --workflow infra-deploy-pipeline.yml \
+  --commit "$(git rev-parse HEAD)" \
+  --limit 1 \
+  --json databaseId \
+  --jq '.[0].databaseId')"
+```
+
+### Kontrollera att appen svarar
+
+```bash
+./scripts/health-check.sh "https://$APP_NAME.azurewebsites.net/health"
+```
+
+Ska sluta med `OK: the app answered 200 on attempt ...`.
+
 ### Om något blev rött
 
 Visa bara loggen från stegen som misslyckades:
@@ -265,6 +393,8 @@ Kör om bara de misslyckade jobben:
 ```bash
 gh run rerun "$LAST_RUN" --failed
 ```
+
+Röd med `AuthorizationFailed` eller `No subscriptions found` strax efter att identitetens roll ändrats? Rollen har inte hunnit börja gälla. Vänta 2–3 minuter och kör om de misslyckade jobben.
 
 ### Starta pipelinen utan att pusha
 
@@ -280,9 +410,9 @@ gh run view "$LAST_RUN" --web
 
 ---
 
-## 7. Städa efter dig
+## 8. Städa efter dig
 
-Planen kostar pengar varje timme den finns, även när ingen använder appen. Ta bort appen när du är klar för dagen. Planen följer med automatiskt.
+Planen (B1, ungefär 4 kr/dag) och registryt (Basic, ungefär 1,66 kr/dag) kostar pengar så länge de finns, även när ingen använder dem. Ta bort dem när du är klar för dagen. Allt kan byggas upp igen från koden.
 
 > 🛑 **Det här tar du INTE bort:**
 > - **Resursgruppen** `RG-muratbuyuksal`. Skolan har skapat den, och den ska stå kvar hela kursen.
@@ -297,6 +427,16 @@ az webapp delete --name "$APP_NAME" --resource-group "$RESOURCE_GROUP"
 
 Ibland skrivs `Note: If this is the last app on the plan, the plan will also be deleted.` ut, ibland ingenting. Båda är okej.
 
+### Ta bort registryt
+
+Imagen i registryt försvinner också. Den kan byggas igen med `az acr build` (avsnitt 6).
+
+```bash
+az acr delete --name "$REGISTRY_NAME" --resource-group "$RESOURCE_GROUP" --yes
+```
+
+Ingen utskrift betyder att det gick bra.
+
 ### Kontrollera att det blev rätt
 
 ```bash
@@ -305,11 +445,17 @@ az resource list --resource-group "$RESOURCE_GROUP" --output table
 
 Bara en rad ska stå kvar: `id-waypoint-pipeline-murat`.
 
-> **Bygga upp igen?** Pusha kod till `main`, eller kör `gh workflow run infra-deploy-pipeline.yml`. Pipelinen skapar planen och appen från Bicep-filerna.
+Står planen kvar? Vänta en minut och kontrollera igen. Står den fortfarande kvar, ta bort den själv:
+
+```bash
+az appservice plan delete --name "$PLAN_NAME" --resource-group "$RESOURCE_GROUP" --yes
+```
+
+> **Bygga upp igen?** Pusha kod till `main`, eller kör `gh workflow run infra-deploy-pipeline.yml`. Pipelinen skapar plan, app och registry från Bicep-filerna. Registryt är då tomt tills du bygger en ny image.
 
 ---
 
-## 8. Snabbguide: ett vanligt arbetspass
+## 9. Snabbguide: ett vanligt arbetspass
 
 Kopiera hela blocket när du ska förhandsgranska allt:
 
@@ -317,6 +463,7 @@ Kopiera hela blocket när du ska förhandsgranska allt:
 # 1. Förbered fönstret
 source scripts/variables.sh
 export MSYS_NO_PATHCONV=1
+REGISTRY_NAME=crwaypointmurat
 SUBJECT_PREFIX=$(gh api "repos/{owner}/{repo}/actions/oidc/customization/sub" --jq .sub_claim_prefix)
 
 # 2. Förhandsgranska identiteten
@@ -325,7 +472,7 @@ az deployment group what-if \
   --template-file infra/identity.bicep \
   --parameters identityName="$IDENTITY_NAME" subjectPrefix="$SUBJECT_PREFIX"
 
-# 3. Förhandsgranska plan och app
+# 3. Förhandsgranska plan, app och registry
 az deployment group what-if \
   --resource-group "$RESOURCE_GROUP" \
   --template-file infra/main.bicep \
@@ -344,3 +491,7 @@ az deployment group what-if \
 | `MissingSubscription` | Git Bash har ändrat en sökväg. | Kör `export MSYS_NO_PATHCONV=1`. |
 | `subjectPrefix` tom eller fel | `SUBJECT_PREFIX` hämtades inte i det här fönstret. | Kör `SUBJECT_PREFIX=$(gh api ...)` från avsnitt 2. |
 | `AADSTS700016: Application ... was not found` | `AZURE_CLIENT_ID` i GitHub pekar på en identitet som inte finns längre. | Skapa identiteten och kör "Ge GitHub kortnumret" i avsnitt 4. |
+| `AuthorizationFailed` med `.../resourcegroups/providers/...` i scope | `$RESOURCE_GROUP` är tom (nytt fönster). Gruppens namn saknas i adressen. Den långa `Traceback`-texten är en bugg i Azure CLI och kan ignoreras. | Kör raderna i "Börja här" och `echo "$RESOURCE_GROUP"`. |
+| `RoleAssignmentExists` | En gammal roll för samma identitet finns kvar under ett annat namn. | Kör loopen "Om du får `RoleAssignmentExists`" i avsnitt 4, sedan `create` igen. |
+| `ResourceNotFound` på `az acr show` | Registryt finns inte: pipelinen är inte klar, blev röd, eller du har städat. | Vänta på grön körning, eller pusha / kör `gh workflow run`. |
+| `AuthorizationFailed` / `No subscriptions found` i pipelinen | Identitetens roll har inte hunnit börja gälla. | Vänta 2–3 minuter, `gh run rerun "$LAST_RUN" --failed`. |

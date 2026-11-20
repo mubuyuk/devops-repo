@@ -50,7 +50,7 @@ export function createApp(store, { log = console.log } = {}) {
   // Used by App Service (module 04), by scripts/health-check.sh (modules 04 and 05) and
   // by the container (modules 07 and 09). Do not remove: later modules depend on this exact route.
   app.get('/health', (request, response) => {
-    response.json({ status: 'healthy', version: '1.0.0', ...(COMMIT && { commit: COMMIT }) })
+    response.json({ status: 'healthy', version: '1.1.0', ...(COMMIT && { commit: COMMIT }) })
   })
 
   app.post('/links', async (request, response) => {

@@ -19,6 +19,12 @@ param registryName string
 @description('Name of the Log Analytics workspace.')
 param workspaceName string
 
+@description('Name of the action group that gets the alerts.')
+param actionGroupName string
+
+@description('Where alerts are sent.')
+param alertEmail string
+
 module appServicePlan 'modules/app-service-plan.bicep' = {
   name: 'app-service-plan'
   params: {
@@ -52,6 +58,16 @@ module appService 'modules/app-service.bicep' = {
     appServicePlanId: appServicePlan.outputs.appServicePlanId
     linuxFxVersion: linuxFxVersion
     workspaceId: logAnalytics.outputs.workspaceId
+  }
+}
+
+module alerts 'modules/alerts.bicep' = {
+  name: 'alerts'
+  params: {
+    location: location
+    workspaceId: logAnalytics.outputs.workspaceId
+    actionGroupName: actionGroupName
+    alertEmail: alertEmail
   }
 }
 

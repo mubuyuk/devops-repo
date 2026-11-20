@@ -8,19 +8,17 @@ Kommandona är anpassade för **Git Bash** och körs från projektets rotmapp (`
 
 ## ⭐ Börja här: varje gång du öppnar ett nytt terminalfönster
 
-Ett nytt fönster minns ingenting från förra gången. Kopiera de här tre raderna och klistra in dem först:
+Ett nytt fönster minns ingenting från förra gången. Kopiera de här två raderna och klistra in dem först:
 
 ```bash
 source scripts/variables.sh
 export MSYS_NO_PATHCONV=1
-REGISTRY_NAME=crwaypointmurat
 ```
 
 | Rad | Vad den gör |
 |---|---|
-| `source scripts/variables.sh` | Lägger in dina namn (resursgrupp, plan, app, identitet) i variabler. |
+| `source scripts/variables.sh` | Lägger in dina namn (namn, resursgrupp, plan, app, identitet, registry, workspace) i variabler. |
 | `export MSYS_NO_PATHCONV=1` | Hindrar Git Bash på Windows från att ändra sökvägar som börjar med `/`. Annars kan Azure svara med fel som `MissingSubscription`. |
-| `REGISTRY_NAME=crwaypointmurat` | Namnet på ditt container registry (modul 7). Bara bokstäver och siffror, samma som i `infra/dev.bicepparam`. |
 
 Efter `source` ska du se en lista med dina värden. Står det något tomt där, är något fel i `scripts/variables.sh`.
 
@@ -47,6 +45,24 @@ az login
 az account show --output table
 ```
 
+### Lista alla prenumerationer du har tillgång till
+
+```bash
+az account list --output table
+```
+
+`IsDefault` är `True` på den som är aktiv, alltså den som alla `az`-kommandon körs mot.
+
+### Byt aktiv prenumeration
+
+```bash
+az account set --subscription "<namn eller id>"
+```
+
+Exempel: `az account set --subscription "Molnutveckling med Azure"`. Ingen utskrift betyder att det gick bra. Kontrollera med `az account show --query name --output tsv`.
+
+Du behöver inte köra `az login` igen: en inloggning ger tillgång till alla prenumerationer ditt konto har behörighet till. Bytet sparas på datorn och gäller även i nya terminalfönster.
+
 ---
 
 ## 2. Miljövariabler
@@ -54,12 +70,13 @@ az account show --output table
 ### Kontrollera att variablerna är satta
 
 ```bash
+echo "$NAME"
 echo "$RESOURCE_GROUP"
 echo "$PLAN_NAME"
-echo "$PLAN_SKU"
 echo "$APP_NAME"
 echo "$IDENTITY_NAME"
 echo "$REGISTRY_NAME"
+echo "$WORKSPACE_NAME"
 ```
 
 Är en rad tom? Kör raderna i "Börja här" igen.
@@ -415,7 +432,7 @@ gh run view "$LAST_RUN" --web
 Planen (B1, ungefär 4 kr/dag) och registryt (Basic, ungefär 1,66 kr/dag) kostar pengar så länge de finns, även när ingen använder dem. Ta bort dem när du är klar för dagen. Allt kan byggas upp igen från koden.
 
 > 🛑 **Det här tar du INTE bort:**
-> - **Resursgruppen** `RG-muratbuyuksal`. Skolan har skapat den, och den ska stå kvar hela kursen.
+> - **Resursgruppen** `MuratBuyuksal` (prenumerationen "Molnutveckling med Azure"). Skolan har skapat den, och den ska stå kvar hela kursen.
 > - **Identiteten** `id-waypoint-pipeline-murat`. Den kostar ingenting, och utan den kan pipelinen inte logga in.
 > - **Hemligheterna i GitHub.**
 
@@ -463,7 +480,6 @@ Kopiera hela blocket när du ska förhandsgranska allt:
 # 1. Förbered fönstret
 source scripts/variables.sh
 export MSYS_NO_PATHCONV=1
-REGISTRY_NAME=crwaypointmurat
 SUBJECT_PREFIX=$(gh api "repos/{owner}/{repo}/actions/oidc/customization/sub" --jq .sub_claim_prefix)
 
 # 2. Förhandsgranska identiteten

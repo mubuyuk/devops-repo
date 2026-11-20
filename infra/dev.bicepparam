@@ -11,3 +11,6 @@ param linuxFxVersion = 'NODE|24-lts'
 param registryName = 'crwaypoint${name}'
 
 param workspaceName = 'log-waypoint-${name}'
+
+param actionGroupName = 'ag-waypoint-${name}'
+param alertEmail = readEnvironmentVariable('ALERT_EMAIL')
